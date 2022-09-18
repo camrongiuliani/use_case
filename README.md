@@ -88,6 +88,24 @@ main() async {
 }
 ```
 
+The above examples show calling a UseCase directly. This is not recommended because it provides no way to abstract the implementation.
+
+The recommended approach is to use the UseCaseManger, which manages UseCases using a String ID. NOTE: The UseCase IDs must be unique.
+
+When using the UseCaseManager, executions are queued and ran asynchronously. 
+
+If a UseCase is added to the queue twice (with matching arguments) during a single queue traversal, the result will be shared between the observers. 
+
+E.g. 
+- Class A tells UseCaseManager to execute FetchRecord UseCase, passing in Limit 5.
+- Class B tells the UseCaseManager to do the same thing, before the UseCase finishes.
+- The manager will attach the Class B observer to the request initiated by class A.
+- When the UseCase completes, the manager will push the result to both class A and class B.
+
+The UseCase will not be called twice.
+
+Note: Simple equality is used (==) when comparing arguments. Since the argument type is Map<String, dynamic>, you must ensure that the value type is equatable.
+
 ## Additional information
 
-WIP
+See Examples 
