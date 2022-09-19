@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:use_case/src/use_case_registry.dart';
+import 'package:use_case/src/use_case_subscription.dart';
 import 'package:use_case/use_case.dart';
 
 class UseCaseManager {
@@ -18,11 +19,15 @@ class UseCaseManager {
 
   bool useCaseExists( String id ) => _registry.exists( id );
 
-  Future<void> call( String id, UseCaseObserver observer, [ Map<String, dynamic>? args ] ) async {
+  Future<void> call( String id, { UseCaseObserver? observer, Map<String, dynamic>? args } ) async {
     return _executor.add( _registry.getUseCase( id ), observer, args );
   }
 
-  Future callFuture( String id, [ Map<String, dynamic>? args ] ) {
+  UseCaseSubscription subscribe( String id, UseCaseObserver observer ) {
+    return _executor.subscribe( _registry.getUseCase( id ), observer );
+  }
+
+    Future callFuture( String id, [ Map<String, dynamic>? args ] ) {
 
     Completer completer = Completer();
 
@@ -36,7 +41,7 @@ class UseCaseManager {
         }
     );
 
-    call( id, handler, args );
+    call( id, observer: handler, args: args );
 
     return completer.future;
   }
@@ -58,7 +63,7 @@ class UseCaseManager {
     );
 
     sc.onListen = () {
-      call( id, handler, args );
+      call( id, observer: handler, args: args );
     };
 
     sc.onCancel = () {

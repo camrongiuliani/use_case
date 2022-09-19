@@ -20,7 +20,7 @@ class ExampleBloc implements UseCaseObserver {
 
     await Future.delayed( const Duration( seconds: 1 ) );
 
-    ucm.call( FetchUsersUseCase.fetchUsersUseCaseID, this );
+    ucm.call( FetchUsersUseCase.fetchUsersUseCaseID, observer: this );
   }
 
   @override

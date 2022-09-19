@@ -2,7 +2,7 @@
 
 Package that aims to provide the concept of UseCases in an agnostic way.
 
-The purpose is not to fully implement UseCases in accordance with any particular spec (Clean Architect for example); however, it should allow YOU to implement whatever spec you deem necessary. 
+The purpose is not to fully implement UseCases in accordance with any particular spec (Clean Architecture for example); however, it should allow YOU to implement whatever spec you deem necessary. 
 
 ## Getting started
 

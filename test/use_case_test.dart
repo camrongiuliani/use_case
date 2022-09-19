@@ -16,7 +16,7 @@ class AddingUseCase extends UseCase<int> {
 
     _validateArgs( args );
 
-    await Future.delayed( const Duration( seconds: 5 ) );
+    await Future.delayed( const Duration( seconds: 3 ) );
 
     return args['first'] + args['second'];
   }
@@ -151,13 +151,13 @@ void main() {
         }
       );
 
-      manager.call( addingUseCase.id, handler, { 'first': 1, 'second': 3 } );
+      manager.call( addingUseCase.id, observer: handler, args: { 'first': 1, 'second': 3 } );
 
       await expectLater( completer.future, completion( equals( 4 ) ) );
 
       completer = Completer();
 
-      manager.call( addingUseCase.id, handler, { 'first': 1, 'second': '3' } );
+      manager.call( addingUseCase.id, observer: handler, args: { 'first': 1, 'second': '3' } );
 
 
     });
@@ -181,6 +181,52 @@ void main() {
       await expectLater( completer.future, completion( equals( 4 ) ) );
 
       await sub.cancel();
+
+    });
+
+    test( 'AddingUseCase added to Manager, subscription test', () async {
+
+      AddingUseCase addingUseCase = AddingUseCase();
+
+      UseCaseManager manager = UseCaseManager();
+
+      manager.registerUseCase( addingUseCase );
+
+      Completer completer = Completer();
+
+      List results = [];
+
+      var handler = UseCaseHandler(
+        onUpdate: ( status ) {
+          if ( status.state == UseCaseState.done ) {
+            results.add( status.data );
+            if ( results.length == 2 ) {
+              completer.complete();
+            }
+          }
+        },
+      );
+
+      var subs = manager.subscribe( addingUseCase.id, handler );
+      var subs2 = manager.subscribe( addingUseCase.id, handler );
+
+      manager.call( addingUseCase.id, args: { 'first': 1, 'second': 2 } );
+      manager.call( addingUseCase.id, args: { 'first': 1, 'second': 2 } );
+
+      await completer.future.timeout( const Duration( seconds: 10 ) ).onError((error, stackTrace) => null);
+
+      expect( results.length, equals( 2 ) );
+
+      subs.dispose();
+      subs2.dispose();
+
+      expect( subs.disposed && subs2.disposed, isTrue );
+
+      manager.call( addingUseCase.id, args: { 'first': 1, 'second': 2 } );
+
+      await Future.delayed( const Duration( seconds: 4 ) );
+
+      expect( results.length, equals( 2 ) );
 
     });
 
