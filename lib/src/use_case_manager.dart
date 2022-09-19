@@ -75,4 +75,8 @@ class UseCaseManager {
     return sc.stream.asBroadcastStream();
   }
 
+  Future<void> flush() async {
+    await _registry.flush();
+    await _executor.flush();
+  }
 }

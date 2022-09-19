@@ -28,6 +28,13 @@ class UseCaseExecutor {
     });
   }
 
+  Future<void> flush() async {
+    return _executionLock.synchronized(() {
+      _queue.clear();
+      _subscriptions.clear();
+    });
+  }
+
   Future<void> _runQueue() async {
 
     if ( _queue.isEmpty ) {
