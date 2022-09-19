@@ -1,5 +1,5 @@
 name: use_case
-description: A new Flutter package project.
+description: Architecture agnostic approach to UseCase implementation.
 version: 0.0.1
 homepage: https://github.com/camrongiuliani/use_case
 
