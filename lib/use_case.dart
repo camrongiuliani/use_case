@@ -6,3 +6,4 @@ export 'src/use_case_status.dart';
 export 'src/use_case_executor.dart';
 export 'src/use_case_observer.dart';
 export 'src/use_case_manager.dart';
+export 'src/use_case_subscription.dart';
