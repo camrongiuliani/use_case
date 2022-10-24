@@ -19,7 +19,7 @@ class UseCaseManager {
 
   bool useCaseExists( String id ) => _registry.exists( id );
 
-  Future<void> call( String id, { UseCaseObserver? observer, Map<String, dynamic>? args } ) async {
+  Future<void> call( String id, { UseCaseObserver? observer, dynamic args } ) async {
     return _executor.add( _registry.getUseCase( id ), observer, args );
   }
 
@@ -27,7 +27,7 @@ class UseCaseManager {
     return _executor.subscribe( _registry.getUseCase( id ), observer );
   }
 
-    Future callFuture( String id, [ Map<String, dynamic>? args ] ) {
+    Future callFuture( String id, [ dynamic args ] ) {
 
     Completer completer = Completer();
 
@@ -46,7 +46,7 @@ class UseCaseManager {
     return completer.future;
   }
 
-  Stream callStream( String id, [ Map<String, dynamic>? args ] ) {
+  Stream callStream( String id, [ dynamic args ] ) {
 
     StreamController sc = StreamController();
 

@@ -13,3 +13,7 @@
 # 0.0.1+3
 
 * Allow covariant dynamic args
+
+# 0.0.1+4
+
+* Bug Fixes

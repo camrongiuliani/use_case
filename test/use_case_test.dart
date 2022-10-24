@@ -115,7 +115,7 @@ void main() {
       manager.registerUseCase( addingUseCase );
 
       await expectLater( () {
-        return  manager.callFuture( addingUseCase.id, {  } ).onError((error, stackTrace) {
+        return  manager.callFuture( addingUseCase.id ).onError((error, stackTrace) {
           expect( error, isA<UseCaseMissingParameterException>() );
           throw error as UseCaseMissingParameterException;
         });

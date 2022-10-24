@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:synchronized/synchronized.dart';
-import 'package:use_case/src/use_case_subscription.dart';
 import 'package:use_case/use_case.dart';
 import 'package:collection/collection.dart';
 
@@ -114,7 +114,7 @@ class UseCaseExecutor {
     return _subscriptions.containsKey( sub.id ) && _subscriptions[sub.id]!.contains( sub );
   }
 
-  void broadcast( UseCase<dynamic> uc, [ Map<String, dynamic>? args ] ) {
+  void broadcast( UseCase<dynamic> uc, [ dynamic args ] ) {
     assert( () {
       return _subscriptions.keys.contains( uc.id ) && _subscriptions[uc.id]!.isNotEmpty;
     }(), 'Requested broadcast for UseCase ${uc.id}, which had no subscriptions' );
@@ -123,12 +123,10 @@ class UseCaseExecutor {
 
   }
 
-  void add( UseCase<dynamic> uc, UseCaseObserver? observer, [ Map<String, dynamic>? args ] ) {
-
-    Function mapEq = const MapEquality().equals;
+  void add( UseCase<dynamic> uc, UseCaseObserver? observer, [ dynamic args ] ) {
 
     // Check UseCase exists with matching args.
-    var idx = _queue.indexWhere( ( q ) => q.id == uc.id && mapEq( q.args, args ) );
+    var idx = _queue.indexWhere( ( q ) => q.id == uc.id  );
 
     // If not exists, add to queue.
     if ( idx == -1 ) {
@@ -158,7 +156,7 @@ class UseCaseExecutor {
 class _UseCaseWrapper<T> {
   final String id;
   final UseCase<T> useCase;
-  final Map<String, dynamic>? args;
+  final dynamic args;
   late UseCaseStatus<T> status;
 
   final List<UseCaseObserver> observers = [];

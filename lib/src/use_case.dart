@@ -5,5 +5,5 @@ abstract class UseCase<T extends Object?> {
 
   const UseCase();
 
-  FutureOr<T> execute( covariant dynamic args );
+  FutureOr<T> execute( covariant Object? args );
 }
