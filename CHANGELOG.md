@@ -9,3 +9,7 @@
 ## 0.0.1+2
 
 * Expose UseCaseSubscription
+
+# 0.0.1+3
+
+* Allow covariant dynamic args

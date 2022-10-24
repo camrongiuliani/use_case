@@ -155,11 +155,6 @@ void main() {
 
       await expectLater( completer.future, completion( equals( 4 ) ) );
 
-      completer = Completer();
-
-      manager.call( addingUseCase.id, observer: handler, args: { 'first': 1, 'second': '3' } );
-
-
     });
 
     test( 'AddingUseCase added to Manager, call with stream', () async {
