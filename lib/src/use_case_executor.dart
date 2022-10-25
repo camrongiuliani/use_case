@@ -73,6 +73,11 @@ class UseCaseExecutor {
 
         }).onError((error, stackTrace) {
 
+          if (kDebugMode) {
+            print(error);
+            print( stackTrace );
+          }
+
           entry.status = entry.status.copyWith( state: UseCaseState.error, error: error, stackTrace: stackTrace );
           _notifyObservers( entry.status, observers );
 
@@ -86,10 +91,13 @@ class UseCaseExecutor {
 
       return Future.wait( completion.map((e) => e.future) );
 
-    }).then( ( v ) {
+    }).then( ( v ) async {
       _queue.removeWhere( ( uc ) => [ UseCaseState.done, UseCaseState.error ].contains( uc.status.state ) );
 
       // print('UseCase Queue Length: ${_queue.length}');
+      if ( _queue.isNotEmpty ) {
+        return await _runQueue();
+      }
 
     }).onError((error, stackTrace)  {
       if (kDebugMode) {
