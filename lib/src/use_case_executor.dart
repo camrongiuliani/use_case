@@ -73,11 +73,6 @@ class UseCaseExecutor {
 
         }).onError((error, stackTrace) {
 
-          if (kDebugMode) {
-            print(error);
-            print( stackTrace );
-          }
-
           entry.status = entry.status.copyWith( state: UseCaseState.error, error: error, stackTrace: stackTrace );
           _notifyObservers( entry.status, observers );
 

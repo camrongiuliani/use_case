@@ -21,3 +21,7 @@
 # 0.0.1+5
 
 * Print more verbose to console on error
+
+# 0.0.1+6
+
+* No longer print on error, up to user to print as desired
