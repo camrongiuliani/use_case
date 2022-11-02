@@ -11,13 +11,20 @@ class UseCaseExecutor {
   final Map<String, List<UseCaseSubscription>> _subscriptions = {};
   final Lock _executionLock;
   final Lock _notificationLock;
+  final bool debug;
 
   static UseCaseExecutor? instance;
 
-  UseCaseExecutor._( this._notificationLock, this._executionLock );
+  UseCaseExecutor._( this._notificationLock, this._executionLock, this.debug );
 
-  factory UseCaseExecutor() {
-    return instance ??= UseCaseExecutor._( Lock(reentrant: true), Lock(reentrant: true) );
+  factory UseCaseExecutor({bool debug = false}) {
+    return instance ??= UseCaseExecutor._( Lock(reentrant: true), Lock(reentrant: true), debug );
+  }
+
+  void log(String message) {
+    if (kDebugMode && debug) {
+      print('UseCaseExecutor: $message');
+    }
   }
 
   void _notifyObservers( UseCaseStatus status, List<UseCaseObserver> observers ) {
@@ -41,13 +48,17 @@ class UseCaseExecutor {
       return;
     }
 
-    return _executionLock.synchronized( () {
+    return _executionLock.synchronized( () async {
 
-      // print('UseCase Queue Length: ${_queue.length}');
+      log('Queue Length: ${_queue.length}');
 
       List<Completer<void>> completion = [];
 
-      for ( var entry in _queue ) {
+      for ( var entry in _queue.where((e) => e.status.state == UseCaseState.queued) ) {
+
+        if ( entry.status.state != UseCaseState.queued ) {
+          continue;
+        }
 
         Completer<void> completer = Completer();
 
@@ -64,19 +75,30 @@ class UseCaseExecutor {
         entry.status = entry.status.copyWith( state: UseCaseState.started );
         _notifyObservers( entry.status, observers );
 
-        Future.sync( () => useCase.execute( args ) ).then( ( val ) {
+        Future.sync( () async {
+          log('${useCase.runtimeType} Starting Execution *****');
+          await useCase.execute( args );
+        }).then( ( val ) {
 
           entry.status = entry.status.copyWith( state: UseCaseState.done, data: val );
+
+          log('${useCase.runtimeType} Completed Normally');
+
           _notifyObservers( entry.status, observers );
 
           completer.complete();
+          log('${useCase.runtimeType} Finished Execution*****');
 
         }).onError((error, stackTrace) {
 
           entry.status = entry.status.copyWith( state: UseCaseState.error, error: error, stackTrace: stackTrace );
+
+          log('${useCase.runtimeType} Completed With Error');
+
           _notifyObservers( entry.status, observers );
 
           completer.complete();
+          log('${useCase.runtimeType} Finished Execution*****');
         });
 
         entry.status = entry.status.copyWith( state: UseCaseState.waiting );
@@ -84,20 +106,25 @@ class UseCaseExecutor {
 
       }
 
-      return Future.wait( completion.map((e) => e.future) );
+      return await Future.wait( completion.map((e) => e.future) );
 
     }).then( ( v ) async {
-      _queue.removeWhere( ( uc ) => [ UseCaseState.done, UseCaseState.error ].contains( uc.status.state ) );
+      _queue.removeWhere( ( uc ) {
+        bool remove = [ UseCaseState.done, UseCaseState.error ].contains( uc.status.state );
 
-      // print('UseCase Queue Length: ${_queue.length}');
+        if (remove) {
+          log('Removed ${uc.runtimeType} from the queue');
+        }
+
+        return remove;
+      });
+
       if ( _queue.isNotEmpty ) {
         return await _runQueue();
       }
 
     }).onError((error, stackTrace)  {
-      if (kDebugMode) {
-        print(error);
-      }
+      log('Error -> ${error?.toString()}');
     });
   }
 
@@ -133,6 +160,7 @@ class UseCaseExecutor {
 
     // If not exists, add to queue.
     if ( idx == -1 ) {
+      log('${uc.runtimeType} added to the queue');
       _queue.add( _UseCaseWrapper( uc, args, observer ) );
     } else if ( observer != null ) {
       // Otherwise grab the existing UseCase
@@ -140,9 +168,12 @@ class UseCaseExecutor {
 
       // If the existing UseCase is done executing, just relay the status.
       if ( [ UseCaseState.done, UseCaseState.error ].contains( existing.status.state ) ) {
+        log('${uc.runtimeType} used result of already completed UseCase');
         observer.onUseCaseUpdate( existing.status );
         return;
       }
+
+      log('${uc.runtimeType} added as an observer to an already existing UseCase');
 
       // Otherwise, attach this observer to the existing UseCase
       existing.observers.add( observer );

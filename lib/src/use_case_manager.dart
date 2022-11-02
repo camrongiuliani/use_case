@@ -7,10 +7,11 @@ class UseCaseManager {
 
   final UseCaseRegistry _registry;
   final UseCaseExecutor _executor;
+  final bool debug;
 
-  UseCaseManager() :
+  UseCaseManager({this.debug = false}) :
         _registry = UseCaseRegistry(),
-        _executor = UseCaseExecutor();
+        _executor = UseCaseExecutor(debug: debug);
 
   /// Registers a UseCase
   registerUseCase( covariant UseCase useCase ) {

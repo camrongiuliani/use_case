@@ -25,3 +25,7 @@
 # 0.0.1+6
 
 * No longer print on error, up to user to print as desired
+
+# 0.0.1+7
+
+* Added debug flag for logging
