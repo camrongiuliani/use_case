@@ -30,6 +30,14 @@
 
 * Added debug flag for logging
 
-# 0.0.1+8
+# 0.0.1+9
 
 * Added use case dispose method
+
+# 0.0.1+10
+
+* Added invoke method
+
+# 0.1.0
+
+* Added invoke method
