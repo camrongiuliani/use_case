@@ -77,7 +77,16 @@ class UseCaseExecutor {
 
         Future.sync( () async {
           log('${useCase.runtimeType} Starting Execution *****');
-          await useCase.execute( args );
+          try {
+            await useCase.execute( args );
+            await useCase.dispose();
+          } catch(e) {
+            try {
+              await useCase.dispose();
+            } catch (e) {}
+
+            rethrow;
+          }
         }).then( ( val ) {
 
           entry.status = entry.status.copyWith( state: UseCaseState.done, data: val );

@@ -29,3 +29,7 @@
 # 0.0.1+7
 
 * Added debug flag for logging
+
+# 0.0.1+8
+
+* Added use case dispose method

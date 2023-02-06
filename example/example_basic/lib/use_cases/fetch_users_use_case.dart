@@ -5,7 +5,7 @@ import 'package:use_case/use_case.dart';
 import '../main.dart';
 import '../models/user.dart';
 
-class FetchUsersUseCase implements UseCase<List<User>> {
+class FetchUsersUseCase extends UseCase<List<User>> {
 
   static String fetchUsersUseCaseID = 'FetchUsersUseCase';
 

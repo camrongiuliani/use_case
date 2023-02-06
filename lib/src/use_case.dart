@@ -6,4 +6,6 @@ abstract class UseCase<T extends Object?> {
   const UseCase();
 
   FutureOr<T> execute( covariant Object? args );
+
+  Future<void> dispose() async {}
 }
