@@ -41,3 +41,7 @@
 # 0.1.0
 
 * Added invoke method
+
+# 0.1.1
+
+* Expose `isExecuting` getter (bool)
