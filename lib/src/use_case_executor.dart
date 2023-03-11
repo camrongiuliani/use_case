@@ -21,6 +21,8 @@ class UseCaseExecutor {
     return instance ??= UseCaseExecutor._( Lock(reentrant: true), Lock(reentrant: true), debug );
   }
 
+  int get queueLength => _queue.length;
+
   void log(String message) {
     if (kDebugMode && debug) {
       print('UseCaseExecutor: $message');

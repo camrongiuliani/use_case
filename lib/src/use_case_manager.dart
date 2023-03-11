@@ -12,6 +12,8 @@ class UseCaseManager {
       : _registry = UseCaseRegistry(),
         _executor = UseCaseExecutor(debug: debug);
 
+  bool get isExecuting => _executor.queueLength > 0;
+
   /// Registers a UseCase
   registerUseCase(covariant UseCase useCase) {
     _registry.register(useCase);
