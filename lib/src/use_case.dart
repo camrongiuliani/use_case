@@ -8,4 +8,6 @@ abstract class UseCase<T extends Object?> {
   FutureOr<T> execute( covariant Object? args );
 
   Future<void> dispose() async {}
+
+  bool get allowConcurrency => false;
 }

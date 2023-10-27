@@ -170,7 +170,7 @@ class UseCaseExecutor {
     var idx = _queue.indexWhere( ( q ) => q.id == uc.id  );
 
     // If not exists, add to queue.
-    if ( idx == -1 ) {
+    if ( idx == -1 || uc.allowConcurrency ) {
       log('${uc.runtimeType} added to the queue');
       _queue.add( _UseCaseWrapper( uc, args, observer ) );
     } else if ( observer != null ) {

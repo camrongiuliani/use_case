@@ -45,3 +45,7 @@
 # 0.1.1
 
 * Expose `isExecuting` getter (bool)
+
+# 0.1.2
+
+* Allow concurrent UseCase executions
