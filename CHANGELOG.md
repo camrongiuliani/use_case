@@ -49,3 +49,7 @@
 # 0.1.2
 
 * Allow concurrent UseCase executions
+
+# 1.0.0
+
+* Switch from string ID to generics 

@@ -11,24 +11,21 @@ import 'use_cases/fetch_users_use_case.dart';
 final injector = GetIt.instance;
 
 void main() {
-
   configureDependencies();
 
   runApp(const MyApp());
 }
 
 void configureDependencies() {
+  injector.registerSingleton(UseCaseManager());
+  injector.registerSingleton(UserService());
 
-  injector.registerSingleton( UseCaseManager() );
-  injector.registerSingleton( UserService() );
-
-  injector.get<UseCaseManager>().registerUseCase( FetchUsersUseCase() );
-
+  injector
+      .get<UseCaseManager>()
+      .register<FetchUsersUseCase>(() => FetchUsersUseCase());
 }
 
 class MyApp extends StatelessWidget {
-
-
   const MyApp({Key? key}) : super(key: key);
 
   @override
@@ -38,8 +35,9 @@ class MyApp extends StatelessWidget {
       home: Builder(
         builder: (c) {
           ExampleViewModel vm = ExampleViewModel();
-          ExampleBloc bloc = ExampleBloc( vm );
-          return ExamplePage( title: 'UseCase Example', viewModel: vm, bloc: bloc );
+          ExampleBloc bloc = ExampleBloc(vm);
+          return ExamplePage(
+              title: 'UseCase Example', viewModel: vm, bloc: bloc);
         },
       ),
     );

@@ -1,6 +1,6 @@
 name: use_case
 description: Architecture agnostic approach to UseCase implementation.
-version: 0.1.2
+version: 1.0.0
 homepage: https://github.com/camrongiuliani/use_case
 
 environment:

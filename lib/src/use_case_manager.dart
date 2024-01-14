@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:use_case/src/use_case_registry.dart';
-import 'package:use_case/src/use_case_subscription.dart';
 import 'package:use_case/use_case.dart';
+
+typedef UseCaseBuilder<T extends UseCase> = T Function();
 
 class UseCaseManager {
   final UseCaseRegistry _registry;
@@ -15,18 +16,21 @@ class UseCaseManager {
   bool get isExecuting => _executor.queueLength > 0;
 
   /// Registers a UseCase
-  registerUseCase(covariant UseCase useCase) {
-    _registry.register(useCase);
+  register<T extends UseCase>(UseCaseBuilder<T> builder) {
+    _registry.register<T>(builder);
   }
 
-  bool useCaseExists(String id) => _registry.exists(id);
+  // registerEvent<X, T extends UseCase>(T Function() builder) {
+  //
+  // }
 
-  Future<void> call(
-    String id, {
+  bool useCaseExists<T extends UseCase>() => _registry.exists<T>();
+
+  Future<void> call<T extends UseCase>({
     UseCaseObserver? observer,
     dynamic args,
   }) async {
-    return _executor.add(_registry.getUseCase(id), observer, args);
+    return _executor.add<T>(_registry.buildUseCase<T>(), observer, args);
   }
 
   Future<void> invoke(
@@ -37,41 +41,45 @@ class UseCaseManager {
     return _executor.add(useCase, observer, args);
   }
 
-  UseCaseSubscription subscribe(String id, UseCaseObserver observer) {
-    return _executor.subscribe(_registry.getUseCase(id), observer);
+  UseCaseSubscription subscribe<T extends UseCase>(UseCaseObserver observer) {
+    return _executor.subscribe<T>(observer);
   }
 
-  Future callFuture(String id, [dynamic args]) {
+  Future callFuture<T extends UseCase>([dynamic args]) {
     Completer completer = Completer();
 
-    UseCaseHandler handler = UseCaseHandler(onUpdate: (status) {
-      if (status.state == UseCaseState.done) {
-        completer.complete(status.data);
-      } else if (status.state == UseCaseState.error) {
-        completer.completeError(status.error ?? status, status.stackTrace);
-      }
-    });
+    UseCaseHandler handler = UseCaseHandler(
+      onUpdate: (status) {
+        if (status.state == UseCaseState.done) {
+          completer.complete(status.data);
+        } else if (status.state == UseCaseState.error) {
+          completer.completeError(status.error ?? status, status.stackTrace);
+        }
+      },
+    );
 
-    call(id, observer: handler, args: args);
+    call<T>(observer: handler, args: args);
 
     return completer.future;
   }
 
-  Stream callStream(String id, [dynamic args]) {
+  Stream callStream<T extends UseCase>([dynamic args]) {
     StreamController sc = StreamController();
 
-    UseCaseHandler handler = UseCaseHandler(onUpdate: (status) {
-      if (status.state == UseCaseState.done) {
-        sc.sink.add(status.data);
-        sc.close();
-      } else if (status.state == UseCaseState.error) {
-        sc.sink.addError(status.error ?? status, status.stackTrace);
-        sc.close();
-      }
-    });
+    UseCaseHandler handler = UseCaseHandler(
+      onUpdate: (status) {
+        if (status.state == UseCaseState.done) {
+          sc.sink.add(status.data);
+          sc.close();
+        } else if (status.state == UseCaseState.error) {
+          sc.sink.addError(status.error ?? status, status.stackTrace);
+          sc.close();
+        }
+      },
+    );
 
     sc.onListen = () {
-      call(id, observer: handler, args: args);
+      call<T>(observer: handler, args: args);
     };
 
     sc.onCancel = () {

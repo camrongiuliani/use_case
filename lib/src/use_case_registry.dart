@@ -1,30 +1,22 @@
 import 'package:use_case/use_case.dart';
 
-class UseCaseRegistry {
+class UseCaseTrigger<T extends UseCase> {}
 
+class UseCaseRegistry {
   UseCaseRegistry();
 
-  final List<UseCase> _useCases = [];
+  final Map<Type, UseCaseBuilder> _useCases = {};
 
-  List<String> get _registeredUseCases => _useCases.isEmpty ? [] : _useCases.map<String>((e) => e.id).toList();
+  bool exists<T extends UseCase>() => _useCases.containsKey(T);
 
-  bool exists( String id ) => _registeredUseCases.contains( id );
-
-  UseCase getUseCase( String id ) {
-    assert( _registeredUseCases.contains( id ), 'UseCase $id not registered' );
-    return _useCases.firstWhere( (e) => e.id == id );
+  T buildUseCase<T extends UseCase>() {
+    assert(exists<T>(), 'UseCase ($T) not registered');
+    return _useCases[T]!() as T;
   }
 
-  register( UseCase uc ) {
-    assert( () {
-      if ( exists( uc.id ) ) {
-        return false;
-      }
-      return true;
-    }(), 'UseCase ${uc.id} was already registered.');
-
-    _useCases.add( uc );
-
+  register<T extends UseCase>(UseCaseBuilder<T> builder) {
+    assert(!exists<T>(), 'UseCase ($T) was already registered.');
+    _useCases[T] = builder;
   }
 
   Future<void> flush() async {

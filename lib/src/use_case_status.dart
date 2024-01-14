@@ -13,8 +13,9 @@ enum UseCaseState {
 
 @freezed
 class UseCaseStatus<T> with _$UseCaseStatus<T> {
-  const factory UseCaseStatus( String id, {
-    @Default( UseCaseState.none ) UseCaseState state,
+  const factory UseCaseStatus(
+    Type type, {
+    @Default(UseCaseState.none) UseCaseState state,
     T? data,
     Object? error,
     StackTrace? stackTrace,
