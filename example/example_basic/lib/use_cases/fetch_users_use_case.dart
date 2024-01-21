@@ -4,11 +4,8 @@ import 'package:use_case/use_case.dart';
 import '../main.dart';
 import '../models/user.dart';
 
-class FetchUsersUseCase extends UseCase<List<User>> {
+class FetchUsersUseCase extends UseCase<Map<String, dynamic>, List<User>> {
   static String fetchUsersUseCaseID = 'FetchUsersUseCase';
-
-  @override
-  String get id => FetchUsersUseCase.fetchUsersUseCaseID;
 
   @override
   FutureOr<List<User>> execute(Map<String, dynamic>? args) {

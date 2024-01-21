@@ -53,3 +53,7 @@
 # 1.0.0
 
 * Switch from string ID to generics 
+
+# 1.1.1
+
+* Specify GIVEN and RESULT in type args of the UseCase 

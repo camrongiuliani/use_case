@@ -4,7 +4,7 @@ import 'package:use_case/src/exceptions.dart';
 
 import 'package:use_case/use_case.dart';
 
-class AddingUseCase extends UseCase<int> {
+class AddingUseCase extends UseCase<Map<String, dynamic>?, int> {
   @override
   FutureOr<int> execute(Map<String, dynamic>? args) async {
     args ??= {};

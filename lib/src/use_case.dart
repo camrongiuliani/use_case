@@ -1,9 +1,9 @@
 import 'dart:async';
 
-abstract class UseCase<T extends Object?> {
+abstract class UseCase<GIVEN extends Object?, RESULT extends Object> {
   const UseCase();
 
-  FutureOr<T> execute(covariant Object? args);
+  FutureOr<RESULT> execute(GIVEN args);
 
   Future<void> dispose() async {}
 
