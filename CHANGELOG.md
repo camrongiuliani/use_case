@@ -57,3 +57,7 @@
 # 1.1.1
 
 * Specify GIVEN and RESULT in type args of the UseCase 
+
+# 1.1.4
+
+* Allow void RESULT and improve type checking 

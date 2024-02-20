@@ -1,6 +1,6 @@
 import 'dart:async';
 
-abstract class UseCase<GIVEN extends Object?, RESULT extends Object> {
+abstract class UseCase<GIVEN extends Object?, RESULT> {
   const UseCase();
 
   FutureOr<RESULT> execute(GIVEN args);
