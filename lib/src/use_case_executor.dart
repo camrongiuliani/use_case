@@ -178,7 +178,7 @@ class UseCaseExecutor {
 
   void add<T extends UseCase>(T uc, UseCaseObserver? observer, [dynamic args]) {
     // Check UseCase exists with matching args.
-    var idx = _queue.indexWhere((q) => q.isType<T>());
+    var idx = _queue.indexWhere((q) => q.isType<T>(args));
 
     // If not exists, add to queue.
     if (idx == -1 || uc.allowConcurrency) {
@@ -227,5 +227,5 @@ class _UseCaseWrapper<T extends UseCase> {
     }
   }
 
-  bool isType<X>() => X == T;
+  bool isType<X>(dynamic args) => X == T && args == this.args;
 }
