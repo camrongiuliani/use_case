@@ -43,10 +43,15 @@ class UseCaseExecutor {
   }
 
   Future<void> flush() async {
-    return _executionLock.synchronized(() {
-      _queue.clear();
-      _subscriptions.clear();
-    });
+    List<_UseCaseWrapper> queueCopy = List.from(_queue);
+    _queue.clear();
+
+    for (var entry in queueCopy) {
+      entry.status = entry.status.copyWith(state: UseCaseState.error);
+      _notifyObservers(entry.status, entry.observers);
+    }
+
+    _subscriptions.clear();
   }
 
   Future<void> _runQueue() async {
@@ -59,10 +64,26 @@ class UseCaseExecutor {
 
       List<Completer<void>> completion = [];
 
-      for (var entry
-          in _queue.where((e) => e.status.state == UseCaseState.queued)) {
+      List<_UseCaseWrapper> getQueue() {
+        return _queue.where((e) {
+          return e.status.state == UseCaseState.queued;
+        }).toList();
+      }
+
+      for (var entry in getQueue()) {
         if (entry.status.state != UseCaseState.queued) {
           continue;
+        }
+
+        if (getQueue().isEmpty) {
+          entry.status = entry.status.copyWith(state: UseCaseState.error);
+          _notifyObservers(entry.status, entry.observers);
+          for (final completer in completion) {
+            completer.completeError(
+              'Queue was empty, requests likely cancelled',
+            );
+          }
+          return null;
         }
 
         Completer<void> completer = Completer();
@@ -86,19 +107,26 @@ class UseCaseExecutor {
           try {
             var r = await useCase.execute(args);
             await useCase.dispose();
+            log('UseCaseExecutor: DISPOSED ${useCase.runtimeType}');
             return r;
           } catch (e) {
+            log('UseCaseExecutor: 1st CATCH ON ${useCase.runtimeType}');
             try {
               await useCase.dispose();
             } catch (e) {
               log(e.toString());
+              log('UseCaseExecutor: 2nd CATCH ON ${useCase.runtimeType}');
             }
+
+            log('UseCaseExecutor: RETHROW ON ${useCase.runtimeType}');
 
             rethrow;
           }
         }).then((val) {
-          entry.status =
-              entry.status.copyWith(state: UseCaseState.done, data: val);
+          entry.status = entry.status.copyWith(
+            state: UseCaseState.done,
+            data: val,
+          );
 
           log('${useCase.runtimeType} Completed Normally');
 
@@ -107,8 +135,12 @@ class UseCaseExecutor {
           completer.complete();
           log('${useCase.runtimeType} Finished Execution*****');
         }).onError((error, stackTrace) {
+          log('UseCaseExecutor: FINAL ON ERROR ${useCase.runtimeType}');
           entry.status = entry.status.copyWith(
-              state: UseCaseState.error, error: error, stackTrace: stackTrace);
+            state: UseCaseState.error,
+            error: error,
+            stackTrace: stackTrace,
+          );
 
           log('${useCase.runtimeType} Completed With Error');
 
@@ -125,8 +157,9 @@ class UseCaseExecutor {
       return await Future.wait(completion.map((e) => e.future));
     }).then((v) async {
       _queue.removeWhere((uc) {
-        bool remove =
-            [UseCaseState.done, UseCaseState.error].contains(uc.status.state);
+        bool remove = [UseCaseState.done, UseCaseState.error].contains(
+          uc.status.state,
+        );
 
         if (remove) {
           log('Removed ${uc.runtimeType} from the queue');
