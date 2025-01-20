@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:synchronized/synchronized.dart';
 import 'package:use_case/use_case.dart';
 
@@ -29,8 +28,8 @@ class UseCaseExecutor {
   int get queueLength => _queue.length;
 
   void log(String message) {
-    if (kDebugMode && debug) {
-      debugPrint('UseCaseExecutor: $message');
+    if (debug) {
+      print('UseCaseExecutor: $message');
     }
   }
 

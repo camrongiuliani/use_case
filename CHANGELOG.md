@@ -56,8 +56,12 @@
 
 # 1.1.1
 
-* Specify GIVEN and RESULT in type args of the UseCase 
+* Specify GIVEN and RESULT in type args of the UseCase
 
 # 1.1.4
 
-* Allow void RESULT and improve type checking 
+* Allow void RESULT and improve type checking
+
+# 1.1.7
+
+* Remove Flutter dependency 
