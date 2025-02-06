@@ -154,7 +154,13 @@ class UseCaseExecutor {
       }
 
       return await Future.wait(completion.map((e) => e.future));
-    }).then((v) async {
+    }).timeout(
+      const Duration(seconds: 60),
+      onTimeout: () {
+        log('UseCaseExecutor: Timeout');
+        return Future.error('UseCaseExecutor: Timeout');
+      },
+    ).then((v) async {
       _queue.removeWhere((uc) {
         bool remove = [UseCaseState.done, UseCaseState.error].contains(
           uc.status.state,

@@ -64,4 +64,8 @@
 
 # 1.1.7
 
-* Remove Flutter dependency 
+* Remove Flutter dependency
+
+# 1.1.8
+
+* Add timeout on execution lock 
