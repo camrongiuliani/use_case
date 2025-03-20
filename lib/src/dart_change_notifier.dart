@@ -1,23 +1,24 @@
 import 'dart:async';
+import 'package:rxdart/rxdart.dart';
 
 /// Not part of public API
 class DartChangeNotifier<T> {
-  final StreamController<T> _streamController;
+  final BehaviorSubject<T> _pub;
 
   /// Not part of public API
-  DartChangeNotifier() : _streamController = StreamController<T>.broadcast();
+  DartChangeNotifier() : _pub = BehaviorSubject<T>();
 
   /// Not part of public API
   void notify( T object ) {
-    _streamController.add( object );
+    _pub.sink.add(object);
   }
 
   /// Not part of public API
-  Stream<T> watch() => _streamController.stream;
+  Stream<T> get stream => _pub.stream;
 
   /// Not part of public API
   Future<void> close() {
-    return _streamController.close();
+    return _pub.close();
   }
 }
 

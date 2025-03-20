@@ -72,4 +72,8 @@
 
 # 1.1.9
 
-* Made isExecuting observable, cleanup code 
+* Made isExecuting observable, cleanup code
+
+# 1.1.10
+
+* Using BehaviorSubject in DartChangeNotifier 
