@@ -76,4 +76,8 @@
 
 # 1.1.10
 
-* Using BehaviorSubject in DartChangeNotifier 
+* Using BehaviorSubject in DartChangeNotifier
+
+# 1.1.11
+
+* Fix deps 
