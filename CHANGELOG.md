@@ -68,4 +68,8 @@
 
 # 1.1.8
 
-* Add timeout on execution lock 
+* Add timeout on execution lock
+
+# 1.1.9
+
+* Made isExecuting observable, cleanup code 

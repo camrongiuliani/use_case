@@ -11,6 +11,8 @@ class UseCaseExecutor {
 
   static UseCaseExecutor? instance;
 
+  final DartValueNotifier<bool> isExecuting = DartValueNotifier(false);
+
   UseCaseExecutor._(this._notificationLock, this._executionLock, this.debug);
 
   factory UseCaseExecutor({bool debug = false}) {
@@ -24,8 +26,6 @@ class UseCaseExecutor {
       debug,
     );
   }
-
-  int get queueLength => _queue.length;
 
   void log(String message) {
     if (debug) {
@@ -53,28 +53,34 @@ class UseCaseExecutor {
     _subscriptions.clear();
   }
 
+  List<_UseCaseWrapper> _getQueue() {
+    return _queue.where((e) {
+      return e.status.state == UseCaseState.queued;
+    }).toList();
+  }
+
   Future<void> _runQueue() async {
-    if (_queue.isEmpty) {
+    final queue = _getQueue();
+
+    if (queue.isEmpty) {
+      isExecuting.value = false;
+
       return;
     }
 
+    isExecuting.value = true;
+
     return _executionLock.synchronized(() async {
-      log('Queue Length: ${_queue.length}');
+      log('Queue Length: ${queue.length}');
 
       List<Completer<void>> completion = [];
 
-      List<_UseCaseWrapper> getQueue() {
-        return _queue.where((e) {
-          return e.status.state == UseCaseState.queued;
-        }).toList();
-      }
-
-      for (var entry in getQueue()) {
+      for (var entry in queue) {
         if (entry.status.state != UseCaseState.queued) {
           continue;
         }
 
-        if (getQueue().isEmpty) {
+        if (queue.isEmpty) {
           entry.status = entry.status.copyWith(state: UseCaseState.error);
           _notifyObservers(entry.status, entry.observers);
           for (final completer in completion) {
@@ -121,18 +127,6 @@ class UseCaseExecutor {
 
             rethrow;
           }
-        }).then((val) {
-          entry.status = entry.status.copyWith(
-            state: UseCaseState.done,
-            data: val,
-          );
-
-          log('${useCase.runtimeType} Completed Normally');
-
-          _notifyObservers(entry.status, observers);
-
-          completer.complete();
-          log('${useCase.runtimeType} Finished Execution*****');
         }).onError((error, stackTrace) {
           log('UseCaseExecutor: FINAL ON ERROR ${useCase.runtimeType}');
           entry.status = entry.status.copyWith(
@@ -147,37 +141,57 @@ class UseCaseExecutor {
 
           completer.complete();
           log('${useCase.runtimeType} Finished Execution*****');
+        }).then((val) {
+          entry.status = entry.status.copyWith(
+            state: UseCaseState.done,
+            data: val,
+          );
+
+          log('${useCase.runtimeType} Completed Normally');
+
+          _notifyObservers(entry.status, observers);
+
+          completer.complete();
+          log('${useCase.runtimeType} Finished Execution*****');
         });
 
         entry.status = entry.status.copyWith(state: UseCaseState.waiting);
         _notifyObservers(entry.status, observers);
       }
 
-      return await Future.wait(completion.map((e) => e.future));
+      return Future.wait(completion.map((e) => e.future));
     }).timeout(
       const Duration(seconds: 60),
+
       onTimeout: () {
         log('UseCaseExecutor: Timeout');
+        cleanQueue();
+        isExecuting.value = false;
         return Future.error('UseCaseExecutor: Timeout');
       },
     ).then((v) async {
-      _queue.removeWhere((uc) {
-        bool remove = [UseCaseState.done, UseCaseState.error].contains(
-          uc.status.state,
-        );
-
-        if (remove) {
-          log('Removed ${uc.runtimeType} from the queue');
-        }
-
-        return remove;
-      });
-
-      if (_queue.isNotEmpty) {
-        return await _runQueue();
-      }
+      cleanQueue();
+      return _runQueue();
     }).onError((error, stackTrace) {
       log('Error -> ${error?.toString()}');
+
+      cleanQueue();
+
+      isExecuting.value = false;
+    });
+  }
+
+  void cleanQueue() {
+    _queue.removeWhere((uc) {
+      bool remove = [UseCaseState.done, UseCaseState.error].contains(
+        uc.status.state,
+      );
+
+      if (remove) {
+        log('Removed ${uc.runtimeType} from the queue');
+      }
+
+      return remove;
     });
   }
 

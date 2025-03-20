@@ -7,3 +7,4 @@ export 'src/use_case_executor.dart';
 export 'src/use_case_observer.dart';
 export 'src/use_case_manager.dart';
 export 'src/use_case_subscription.dart';
+export 'src/dart_change_notifier.dart';

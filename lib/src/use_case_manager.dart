@@ -13,16 +13,12 @@ class UseCaseManager {
       : _registry = UseCaseRegistry(),
         _executor = UseCaseExecutor(debug: debug);
 
-  bool get isExecuting => _executor.queueLength > 0;
+  DartValueNotifier<bool> get isExecuting => _executor.isExecuting;
 
   /// Registers a UseCase
   register<T extends UseCase>(UseCaseBuilder<T> builder) {
     _registry.register<T>(builder);
   }
-
-  // registerEvent<X, T extends UseCase>(T Function() builder) {
-  //
-  // }
 
   bool useCaseExists<T extends UseCase>() => _registry.exists<T>();
 
