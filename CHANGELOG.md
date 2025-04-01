@@ -80,4 +80,8 @@
 
 # 1.1.11
 
-* Fix deps 
+* Fix deps
+
+# 1.1.12
+
+* Fixed issues, added more error logs 

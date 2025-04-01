@@ -135,11 +135,13 @@ class UseCaseExecutor {
             stackTrace: stackTrace,
           );
 
-          log('${useCase.runtimeType} Completed With Error');
+          log('${useCase.runtimeType} Completed With Error: $error');
 
           _notifyObservers(entry.status, observers);
 
-          completer.complete();
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
           log('${useCase.runtimeType} Finished Execution*****');
         }).then((val) {
           entry.status = entry.status.copyWith(
@@ -151,7 +153,9 @@ class UseCaseExecutor {
 
           _notifyObservers(entry.status, observers);
 
-          completer.complete();
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
           log('${useCase.runtimeType} Finished Execution*****');
         });
 
