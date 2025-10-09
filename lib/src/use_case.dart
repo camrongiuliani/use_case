@@ -1,7 +1,11 @@
 import 'dart:async';
 
+import 'package:uuid/uuid.dart';
+
 abstract class UseCase<GIVEN extends Object?, RESULT> {
-  const UseCase();
+  UseCase() : traceId = const Uuid().v4();
+
+  final String traceId;
 
   FutureOr<RESULT> execute(GIVEN args);
 
