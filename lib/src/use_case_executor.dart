@@ -2,20 +2,31 @@ import 'dart:async';
 import 'package:synchronized/synchronized.dart';
 import 'package:use_case/use_case.dart';
 
+typedef UCLogger = void Function(String message, UCLogLevel logLevel);
+
 class UseCaseExecutor {
   final List<_UseCaseWrapper> _queue = [];
   final Map<Type, List<UseCaseSubscription>> _subscriptions = {};
   final Lock _executionLock;
   final Lock _notificationLock;
   final bool debug;
+  final UCLogger? logger;
 
   static UseCaseExecutor? instance;
 
   final DartValueNotifier<bool> isExecuting = DartValueNotifier(false);
 
-  UseCaseExecutor._(this._notificationLock, this._executionLock, this.debug);
+  UseCaseExecutor._(
+    this._notificationLock,
+    this._executionLock,
+    this.debug,
+    this.logger,
+  );
 
-  factory UseCaseExecutor({bool debug = false}) {
+  factory UseCaseExecutor({
+    bool debug = false,
+    UCLogger? logger,
+  }) {
     return instance ??= UseCaseExecutor._(
       Lock(
         reentrant: true,
@@ -24,14 +35,24 @@ class UseCaseExecutor {
         reentrant: true,
       ),
       debug,
+      logger,
     );
   }
 
-  void log(String message) {
-    if (debug) {
+  void log(String message, UCLogLevel logLevel) {
+    if (logger != null) {
+      logger!(message, logLevel);
+    } else if (debug) {
+      // ignore: avoid_print
       print('UseCaseExecutor: $message');
     }
   }
+  
+  void logV(String message) => log(message, UCLogLevel.verbose);
+  void logD(String message) => log(message, UCLogLevel.debug);
+  void logI(String message) => log(message, UCLogLevel.info);
+  void logW(String message) => log(message, UCLogLevel.warning);
+  void logE(String message) => log(message, UCLogLevel.error);
 
   void _notifyObservers(UseCaseStatus status, List<UseCaseObserver> observers) {
     _notificationLock.synchronized(() {
@@ -71,7 +92,7 @@ class UseCaseExecutor {
     isExecuting.value = true;
 
     return _executionLock.synchronized(() async {
-      log('Queue Length: ${queue.length}');
+      logV('Queue Length: ${queue.length}');
 
       List<Completer<void>> completion = [];
 
@@ -108,55 +129,54 @@ class UseCaseExecutor {
         _notifyObservers(entry.status, observers);
 
         Future.sync(() async {
-          log('${useCase.runtimeType} Starting Execution *****');
+          logV('${useCase.runtimeType} Starting Execution ');
           try {
             var r = await useCase.execute(args);
             await useCase.dispose();
-            log('UseCaseExecutor: DISPOSED ${useCase.runtimeType}');
+            logV('UseCaseExecutor: DISPOSED ${useCase.runtimeType}');
             return r;
           } catch (e) {
-            log('UseCaseExecutor: 1st CATCH ON ${useCase.runtimeType}');
+            logE('Error (1) in ${useCase.runtimeType}');
             try {
               await useCase.dispose();
             } catch (e) {
-              log(e.toString());
-              log('UseCaseExecutor: 2nd CATCH ON ${useCase.runtimeType}');
+              logE('Error (2) in ${useCase.runtimeType} : ${e.toString()}');
             }
 
-            log('UseCaseExecutor: RETHROW ON ${useCase.runtimeType}');
+            logE('Error (3) in ${useCase.runtimeType}');
 
             rethrow;
           }
         }).onError((error, stackTrace) {
-          log('UseCaseExecutor: FINAL ON ERROR ${useCase.runtimeType}');
+          logE('Error (4) in ${useCase.runtimeType} : ${error.toString()}');
           entry.status = entry.status.copyWith(
             state: UseCaseState.error,
             error: error,
             stackTrace: stackTrace,
           );
 
-          log('${useCase.runtimeType} Completed With Error: $error');
+          logE('${useCase.runtimeType} Completed With Error: $error');
 
           _notifyObservers(entry.status, observers);
 
           if (!completer.isCompleted) {
             completer.complete();
           }
-          log('${useCase.runtimeType} Finished Execution*****');
+          logV('${useCase.runtimeType} Finished Execution');
         }).then((val) {
           entry.status = entry.status.copyWith(
             state: UseCaseState.done,
             data: val,
           );
 
-          log('${useCase.runtimeType} Completed Normally');
+          logV('${useCase.runtimeType} Completed Normally');
 
           _notifyObservers(entry.status, observers);
 
           if (!completer.isCompleted) {
             completer.complete();
           }
-          log('${useCase.runtimeType} Finished Execution*****');
+          logV('${useCase.runtimeType} Finished Execution');
         });
 
         entry.status = entry.status.copyWith(state: UseCaseState.waiting);
@@ -166,9 +186,8 @@ class UseCaseExecutor {
       return Future.wait(completion.map((e) => e.future));
     }).timeout(
       const Duration(seconds: 60),
-
       onTimeout: () {
-        log('UseCaseExecutor: Timeout');
+        logE('Timeout while executing UseCases');
         cleanQueue();
         isExecuting.value = false;
         return Future.error('UseCaseExecutor: Timeout');
@@ -177,7 +196,7 @@ class UseCaseExecutor {
       cleanQueue();
       return _runQueue();
     }).onError((error, stackTrace) {
-      log('Error -> ${error?.toString()}');
+      logE('Error -> ${error?.toString()}');
 
       cleanQueue();
 
@@ -192,7 +211,7 @@ class UseCaseExecutor {
       );
 
       if (remove) {
-        log('Removed ${uc.runtimeType} from the queue');
+        logV('Removed ${uc.runtimeType} from the queue');
       }
 
       return remove;
@@ -238,7 +257,7 @@ class UseCaseExecutor {
 
     // If not exists, add to queue.
     if (idx == -1 || uc.allowConcurrency) {
-      log('${uc.runtimeType} added to the queue');
+      logV('${uc.runtimeType} added to the queue');
       _queue.add(_UseCaseWrapper<T>(uc, args, observer));
     } else if (observer != null) {
       // Otherwise grab the existing UseCase
@@ -247,12 +266,12 @@ class UseCaseExecutor {
       // If the existing UseCase is done executing, just relay the status.
       if ([UseCaseState.done, UseCaseState.error]
           .contains(existing.status.state)) {
-        log('${uc.runtimeType} used result of already completed UseCase');
+        logV('${uc.runtimeType} used result of already completed UseCase');
         observer.onUseCaseUpdate(existing.status);
         return;
       }
 
-      log('${uc.runtimeType} added as an observer to an already existing UseCase');
+      logV('${uc.runtimeType} added as an observer to an already existing UseCase');
 
       // Otherwise, attach this observer to the existing UseCase
       existing.observers.add(observer);
