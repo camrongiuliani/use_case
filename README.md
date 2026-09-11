@@ -104,6 +104,15 @@ E.g.
 
 The UseCase will not be called twice.
 
+The exception is a batch that exceeded `batchTimeout`. The executor abandons
+those UseCases and notifies their observers with `UseCaseState.error` carrying a
+`UseCaseTimeoutException`, but it cannot cancel them — they keep running to
+completion, and their results are discarded. A re-add with matching arguments
+after that point is therefore NOT deduplicated against the abandoned run: it
+starts a fresh execution. One logical request can end up executing twice, and
+the package provides no idempotency guard, so a UseCase with side effects needs
+to handle that itself.
+
 Note: Simple equality is used (==) when comparing arguments. Since the argument type is Map<String, dynamic>, you must ensure that the value type is equatable.
 
 ## Additional information

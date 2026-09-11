@@ -4,6 +4,30 @@ import 'package:use_case/use_case.dart';
 
 typedef UCLogger = void Function(String message, UCLogLevel logLevel);
 
+/// Thrown when a batch of queued UseCases exceeds [UseCaseExecutor.batchTimeout]
+/// and the executor abandons it.
+///
+/// The UseCase itself cannot be cancelled, so it keeps running; the executor
+/// simply stops waiting on it and discards whatever it eventually produces.
+/// Observers are notified with [UseCaseState.error] carrying this exception,
+/// which is what lets a consumer tell "abandoned by the executor" apart from a
+/// genuine failure inside the UseCase.
+class UseCaseTimeoutException implements Exception {
+  UseCaseTimeoutException(this.useCaseType, this.timeout);
+
+  /// The type of the UseCase that was abandoned.
+  final Type useCaseType;
+
+  /// The batch timeout that elapsed.
+  final Duration timeout;
+
+  @override
+  String toString() {
+    return 'UseCaseTimeoutException: $useCaseType was abandoned after its batch '
+        'exceeded $timeout. The UseCase may still be running.';
+  }
+}
+
 class UseCaseExecutor {
   final List<_UseCaseWrapper> _queue = [];
   final Map<Type, List<UseCaseSubscription>> _subscriptions = {};
@@ -11,6 +35,27 @@ class UseCaseExecutor {
   final Lock _notificationLock;
   final bool debug;
   final UCLogger? logger;
+
+  /// Maximum time a single batch of queued UseCases is allowed to run before
+  /// the batch is abandoned.
+  ///
+  /// The in-flight UseCases cannot be cancelled, so they keep running; the
+  /// executor simply stops waiting on them, releases the execution lock and
+  /// resumes draining the queue.
+  ///
+  /// Observers of an abandoned UseCase are notified with [UseCaseState.error]
+  /// carrying a [UseCaseTimeoutException], and the entry leaves the queue. If
+  /// the abandoned UseCase later completes, its result is discarded and no
+  /// further notification is sent.
+  ///
+  /// Two known rough edges on this path:
+  ///
+  /// * The timeout status carries no `stackTrace`, so a consumer bridging it to
+  ///   a Future (such as `UseCaseManager.callFuture`) completes the error with a
+  ///   null stack trace.
+  /// * `dispose()` still runs on the abandoned UseCase whenever it eventually
+  ///   finishes, which is after its observers were told the run had ended.
+  final Duration batchTimeout;
 
   static UseCaseExecutor? instance;
 
@@ -20,13 +65,59 @@ class UseCaseExecutor {
     this._notificationLock,
     this._executionLock,
     this.debug,
-    this.logger,
-  );
+    this.logger, [
+    this.batchTimeout = const Duration(seconds: 60),
+  ]);
 
+  /// Returns the process-wide [UseCaseExecutor] singleton.
+  ///
+  /// NOTE: the instance is created once and cached in [instance]. Every
+  /// parameter, including [batchTimeout], is therefore only applied on the
+  /// FIRST call. Later calls return the existing instance and ignore the values
+  /// passed to them. Configure the executor before anything else constructs it,
+  /// or reset [instance] yourself.
+  ///
+  /// A later call that explicitly passes a [batchTimeout] differing from the
+  /// live instance's logs a warning, so a dropped configuration is visible
+  /// rather than silent. Omitting [batchTimeout] is not a configuration attempt
+  /// and is never warned about. The other parameters are still dropped without
+  /// a warning.
+  ///
+  /// The warning is sent to the live instance's logger AND, when it differs, to
+  /// the logger passed to this call — otherwise a caller that configures the
+  /// executor late would never see that its value was dropped, because the
+  /// instance doing the logging is the one it failed to configure.
   factory UseCaseExecutor({
     bool debug = false,
     UCLogger? logger,
+    Duration? batchTimeout,
   }) {
+    final existing = instance;
+
+    // `batchTimeout == null` means "not passed". Without the nullable type the
+    // factory cannot tell that apart from an explicit 60s, and every default
+    // construction after a configured one would be blamed for a value it never
+    // supplied.
+    if (existing != null &&
+        batchTimeout != null &&
+        existing.batchTimeout != batchTimeout) {
+      final message =
+          'UseCaseExecutor already exists, so the batchTimeout passed to this '
+          'call ($batchTimeout) was IGNORED; the instance keeps '
+          '${existing.batchTimeout}. Construct the executor with the timeout '
+          'you want before anything else constructs it, or reset '
+          'UseCaseExecutor.instance first.';
+
+      existing.logW(message);
+
+      // The live instance may have been built without a logger (UseCaseManager
+      // builds it that way), which would send the warning nowhere. Tell the
+      // caller directly too.
+      if (logger != null && !identical(logger, existing.logger)) {
+        logger(message, UCLogLevel.warning);
+      }
+    }
+
     return instance ??= UseCaseExecutor._(
       Lock(
         reentrant: true,
@@ -36,6 +127,7 @@ class UseCaseExecutor {
       ),
       debug,
       logger,
+      batchTimeout ?? const Duration(seconds: 60),
     );
   }
 
@@ -67,6 +159,11 @@ class UseCaseExecutor {
     _queue.clear();
 
     for (var entry in queueCopy) {
+      // Same reasoning as the batch timeout: the execution closures still hold
+      // this entry, so without the flag the success arm would later overwrite
+      // the status and notify `done` after `error`.
+      entry.abandoned = true;
+
       entry.status = entry.status.copyWith(state: UseCaseState.error);
       _notifyObservers(entry.status, entry.observers);
     }
@@ -147,8 +244,50 @@ class UseCaseExecutor {
 
             rethrow;
           }
-        }).onError((error, stackTrace) {
+        }).then((val) {
+          // The batch this UseCase belonged to timed out; observers have
+          // already been given a terminal status, so drop the late result
+          // rather than notifying a second time.
+          if (entry.abandoned) {
+            logV(
+              '${useCase.runtimeType} completed after its batch was abandoned; '
+              'result discarded',
+            );
+
+            if (!completer.isCompleted) {
+              completer.complete();
+            }
+            return;
+          }
+
+          entry.status = entry.status.copyWith(
+            state: UseCaseState.done,
+            data: val,
+          );
+
+          logV('${useCase.runtimeType} Completed Normally');
+
+          _notifyObservers(entry.status, observers);
+
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+          logV('${useCase.runtimeType} Finished Execution');
+        }, onError: (Object error, StackTrace stackTrace) {
           logE('Error (4) in ${useCase.runtimeType} : ${error.toString()}');
+
+          if (entry.abandoned) {
+            logV(
+              '${useCase.runtimeType} failed after its batch was abandoned; '
+              'error discarded',
+            );
+
+            if (!completer.isCompleted) {
+              completer.complete();
+            }
+            return;
+          }
+
           entry.status = entry.status.copyWith(
             state: UseCaseState.error,
             error: error,
@@ -163,36 +302,53 @@ class UseCaseExecutor {
             completer.complete();
           }
           logV('${useCase.runtimeType} Finished Execution');
-        }).then((val) {
-          entry.status = entry.status.copyWith(
-            state: UseCaseState.done,
-            data: val,
-          );
-
-          logV('${useCase.runtimeType} Completed Normally');
-
-          _notifyObservers(entry.status, observers);
-
-          if (!completer.isCompleted) {
-            completer.complete();
-          }
-          logV('${useCase.runtimeType} Finished Execution');
         });
 
         entry.status = entry.status.copyWith(state: UseCaseState.waiting);
         _notifyObservers(entry.status, observers);
       }
 
-      return Future.wait(completion.map((e) => e.future));
-    }).timeout(
-      const Duration(seconds: 60),
-      onTimeout: () {
-        logE('Timeout while executing UseCases');
-        cleanQueue();
-        isExecuting.value = false;
-        return Future.error('UseCaseExecutor: Timeout');
-      },
-    ).then((v) async {
+      // The timeout is applied INSIDE the synchronized block, on the batch
+      // itself. Timing out therefore completes the block, which releases the
+      // execution lock and lets the queue keep draining below.
+      //
+      // The in-flight UseCases cannot be cancelled, so they keep running, but
+      // the executor has given up on them: each one is marked abandoned and
+      // given a terminal `error` status carrying a UseCaseTimeoutException, so
+      // its observers get an outcome instead of waiting forever. Being terminal
+      // also makes cleanQueue() below reclaim the entry, which is what lets a
+      // later add() of the same type dispatch a fresh run rather than attach to
+      // the abandoned one. Late completion is discarded (see `abandoned` in the
+      // handlers above).
+      return Future.wait(completion.map((e) => e.future)).timeout(
+        batchTimeout,
+        onTimeout: () {
+          logE('Timeout while executing UseCases');
+
+          for (final entry in queue) {
+            // Only the UseCases this batch actually dispatched and is still
+            // waiting on. Anything already done/error keeps its real outcome.
+            if (entry.status.state != UseCaseState.started &&
+                entry.status.state != UseCaseState.waiting) {
+              continue;
+            }
+
+            entry.abandoned = true;
+
+            entry.status = entry.status.copyWith(
+              state: UseCaseState.error,
+              error: UseCaseTimeoutException(entry.type, batchTimeout),
+            );
+
+            logE('${entry.type} abandoned after $batchTimeout');
+
+            _notifyObservers(entry.status, entry.observers);
+          }
+
+          return <void>[];
+        },
+      );
+    }).then((v) async {
       cleanQueue();
       return _runQueue();
     }).onError((error, stackTrace) {
@@ -252,8 +408,10 @@ class UseCaseExecutor {
   }
 
   void add<T extends UseCase>(T uc, UseCaseObserver? observer, [dynamic args]) {
-    // Check UseCase exists with matching args.
-    var idx = _queue.indexWhere((q) => q.isType<T>(args));
+    // Check UseCase exists with matching args. An abandoned UseCase is never a
+    // match: the executor gave up on it, so a new request must dispatch a fresh
+    // run rather than attach to it or relay its timeout status.
+    var idx = _queue.indexWhere((q) => q.isType<T>(args) && !q.abandoned);
 
     // If not exists, add to queue.
     if (idx == -1 || uc.allowConcurrency) {
@@ -290,6 +448,12 @@ class _UseCaseWrapper<T extends UseCase> {
   final dynamic args;
   late final Type type;
   late UseCaseStatus status;
+
+  /// Set when the batch this UseCase belonged to exceeded
+  /// [UseCaseExecutor.batchTimeout]. The UseCase may still be running, but the
+  /// executor has stopped waiting on it and has already notified its observers,
+  /// so any result it later produces is discarded.
+  bool abandoned = false;
 
   final List<UseCaseObserver> observers = [];
 
