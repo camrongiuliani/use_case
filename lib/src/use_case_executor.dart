@@ -12,6 +12,14 @@ class UseCaseExecutor {
   final bool debug;
   final UCLogger? logger;
 
+  /// Maximum time a single batch of queued UseCases is allowed to run before
+  /// the batch is abandoned.
+  ///
+  /// The in-flight UseCases cannot be cancelled, so they keep running; the
+  /// executor simply stops waiting on them, releases the execution lock and
+  /// resumes draining the queue.
+  final Duration batchTimeout;
+
   static UseCaseExecutor? instance;
 
   final DartValueNotifier<bool> isExecuting = DartValueNotifier(false);
@@ -20,12 +28,21 @@ class UseCaseExecutor {
     this._notificationLock,
     this._executionLock,
     this.debug,
-    this.logger,
-  );
+    this.logger, [
+    this.batchTimeout = const Duration(seconds: 60),
+  ]);
 
+  /// Returns the process-wide [UseCaseExecutor] singleton.
+  ///
+  /// NOTE: the instance is created once and cached in [instance]. Every
+  /// parameter, including [batchTimeout], is therefore only applied on the
+  /// FIRST call. Later calls return the existing instance and silently ignore
+  /// the values passed to them. Configure the executor before anything else
+  /// constructs it, or reset [instance] yourself.
   factory UseCaseExecutor({
     bool debug = false,
     UCLogger? logger,
+    Duration batchTimeout = const Duration(seconds: 60),
   }) {
     return instance ??= UseCaseExecutor._(
       Lock(
@@ -36,6 +53,7 @@ class UseCaseExecutor {
       ),
       debug,
       logger,
+      batchTimeout,
     );
   }
 
@@ -183,16 +201,22 @@ class UseCaseExecutor {
         _notifyObservers(entry.status, observers);
       }
 
-      return Future.wait(completion.map((e) => e.future));
-    }).timeout(
-      const Duration(seconds: 60),
-      onTimeout: () {
-        logE('Timeout while executing UseCases');
-        cleanQueue();
-        isExecuting.value = false;
-        return Future.error('UseCaseExecutor: Timeout');
-      },
-    ).then((v) async {
+      // The timeout is applied INSIDE the synchronized block, on the batch
+      // itself. Timing out therefore completes the block, which releases the
+      // execution lock and lets the queue keep draining below.
+      //
+      // The in-flight UseCases cannot be cancelled, so they keep running. They
+      // stay in the queue as `waiting`, which _getQueue() ignores, and their
+      // late completion only touches their own status and their own completer
+      // (which is still uncompleted, and guarded by isCompleted anyway).
+      return Future.wait(completion.map((e) => e.future)).timeout(
+        batchTimeout,
+        onTimeout: () {
+          logE('Timeout while executing UseCases');
+          return <void>[];
+        },
+      );
+    }).then((v) async {
       cleanQueue();
       return _runQueue();
     }).onError((error, stackTrace) {

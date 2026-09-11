@@ -85,3 +85,15 @@
 # 1.1.12
 
 * Fixed issues, added more error logs 
+
+# Unreleased
+
+* `UseCaseExecutor` batch timeout is now configurable via the `batchTimeout`
+  parameter. Defaults to 60 seconds, so existing behaviour is unchanged.
+  Note that `UseCaseExecutor` is a singleton, so the value only applies on the
+  first construction.
+* The batch timeout now releases the execution lock and resumes draining the
+  queue. Previously the timeout was chained onto the future returned by
+  `synchronized(...)`, which left the lock held by the abandoned batch and
+  skipped the re-drain, so UseCases dispatched after a timeout stayed queued
+  until some later unrelated dispatch.
