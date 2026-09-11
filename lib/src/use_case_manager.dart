@@ -46,6 +46,16 @@ class UseCaseManager {
 
     UseCaseHandler handler = UseCaseHandler(
       onUpdate: (status) {
+        // A Completer is single-shot, so the first terminal status wins and any
+        // later one is absorbed here. Without this guard a second terminal
+        // status throws StateError from inside the observer notification, which
+        // is NOT delivered to this caller: UseCaseExecutor._notifyObservers
+        // neither awaits nor catches the lock future it runs the callbacks in,
+        // so the throw escapes to the zone's uncaught handler.
+        if (completer.isCompleted) {
+          return;
+        }
+
         if (status.state == UseCaseState.done) {
           completer.complete(status.data);
         } else if (status.state == UseCaseState.error) {
@@ -64,6 +74,13 @@ class UseCaseManager {
 
     UseCaseHandler handler = UseCaseHandler(
       onUpdate: (status) {
+        // Mirrors the callFuture guard: the controller is closed on the first
+        // terminal status, and adding to a closed controller throws StateError
+        // into the zone rather than to this caller.
+        if (sc.isClosed) {
+          return;
+        }
+
         if (status.state == UseCaseState.done) {
           sc.sink.add(status.data);
           sc.close();

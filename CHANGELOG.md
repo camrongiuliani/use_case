@@ -149,6 +149,34 @@
   The warning is delivered to the live instance's logger AND to the logger
   passed to the call when they differ, because the instance doing the logging is
   the one the caller failed to configure and may well have no logger at all.
+* `UseCaseManager.callFuture` and `callStream` now ignore a terminal status that
+  arrives after the first one, instead of forwarding it to an already-completed
+  `Completer` or an already-closed `StreamController`. `callFuture` returns early
+  when `completer.isCompleted`, `callStream` when `sc.isClosed`. The first
+  terminal status wins.
+  This is defence in depth rather than a restatement of the executor fixes above.
+  Those fixes stop the executor from double-notifying; these guards stop a double
+  notification from being harmful at all, so the invariant no longer rests on
+  every current and future notification path in `UseCaseExecutor` getting it
+  right. The bridges are the only two places in the package that convert the
+  multi-notification observer protocol into single-shot primitives, so they are
+  the right place to enforce single-shot.
+  It matters more than a normal defensive check because of where the throw goes.
+  `UseCaseExecutor._notifyObservers` runs observer callbacks inside
+  `_notificationLock.synchronized(...)` and neither awaits nor catches the future
+  that returns. A `StateError` thrown by an observer therefore does NOT propagate
+  to the caller that invoked the UseCase, and cannot be caught at the call site —
+  it escapes to the surrounding zone's uncaught-error handler (in Flutter,
+  `FlutterError.onError`). A consumer sees an unhandled crash with no local stack
+  linking it to its own call.
+  One such path was still reachable on this branch and is now closed:
+  `cleanQueue()` only reclaims entries once the whole batch settles, so a UseCase
+  that finishes early sits in the queue carrying a terminal `done` while a slower
+  batch-mate is still running. `flush()` does not check for an already-terminal
+  status, so it notifies `error` over the top — `complete()` then
+  `completeError()` on the same `Completer`. The `flush()` fix above covers an
+  abandoned entry that is still `waiting`; it does not cover one that already
+  reported `done`. Covered by two new tests that reproduce that sequence.
 * Removed `test/use_case_test.dart`. It was entirely commented out and imported
   `flutter_test`, which the package never declared, so it only served to make
   `dart test` exit non-zero.
