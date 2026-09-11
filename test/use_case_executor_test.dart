@@ -195,7 +195,8 @@ void main() {
   });
 
   group('UseCaseExecutor timeout notification', () {
-    test('observers of a timed out UseCase are notified with a terminal error '
+    test(
+        'observers of a timed out UseCase are notified with a terminal error '
         'status', () async {
       final logs = <String>[];
       final executor = UseCaseExecutor(
@@ -228,7 +229,8 @@ void main() {
       expect(error.timeout, const Duration(milliseconds: 150));
     });
 
-    test('a UseCase that completes after its batch was abandoned does not '
+    test(
+        'a UseCase that completes after its batch was abandoned does not '
         'notify again', () async {
       final logs = <String>[];
       final executor = UseCaseExecutor(
@@ -260,8 +262,8 @@ void main() {
       );
     });
 
-    test('a re-dispatch after a timeout starts a fresh run rather than '
-        'attaching to the abandoned one', () async {
+    test('a re-dispatch after a timeout is not blocked by a stale queue entry',
+        () async {
       final logs = <String>[];
       final executor = UseCaseExecutor(
         batchTimeout: const Duration(milliseconds: 150),
@@ -323,8 +325,62 @@ void main() {
     });
   });
 
+  group('UseCaseExecutor timeout re-dispatch', () {
+    test(
+        'a synchronous re-dispatch from the timeout error callback starts a '
+        'fresh run', () async {
+      final logs = <String>[];
+      final executor = UseCaseExecutor(
+        batchTimeout: const Duration(milliseconds: 150),
+        logger: (m, _) => logs.add(m),
+      );
+
+      final retried = Completer<UseCaseStatus>();
+
+      var redispatched = false;
+
+      // onTimeout notifies observers synchronously, BEFORE the .then that runs
+      // cleanQueue(). Retrying from inside that notification - the ordinary
+      // 'retry in my error callback' pattern - is the window where the
+      // abandoned entry is still in the queue, now carrying a terminal status.
+      // Without the !abandoned guard, add() matches it and relays the stale
+      // timeout status instead of executing anything.
+      final handler = UseCaseHandler(onUpdate: (status) {
+        if (redispatched ||
+            status.state != UseCaseState.error ||
+            status.error is! UseCaseTimeoutException) {
+          return;
+        }
+
+        redispatched = true;
+
+        executor.add(
+          DelayedUseCase('retry', const Duration(milliseconds: 10)),
+          _completeOn(retried, UseCaseState.done),
+        );
+      });
+
+      executor.add(
+        DelayedUseCase('slow', const Duration(seconds: 2)),
+        handler,
+      );
+
+      await _waitFor(() => logs.contains(_timeoutLog));
+
+      expect(redispatched, isTrue);
+
+      final status = await retried.future.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => fail('re-dispatch never produced a done'),
+      );
+
+      expect(status.data, 'retry');
+    });
+  });
+
   group('UseCaseManager error bridging', () {
-    test('callFuture on a throwing UseCase completes with the error once and '
+    test(
+        'callFuture on a throwing UseCase completes with the error once and '
         'raises no StateError', () async {
       final uncaught = <Object>[];
 
@@ -355,7 +411,8 @@ void main() {
       expect(uncaught, isEmpty);
     });
 
-    test('callStream on a throwing UseCase emits the error, closes, and raises '
+    test(
+        'callStream on a throwing UseCase emits the error, closes, and raises '
         'no StateError', () async {
       final uncaught = <Object>[];
       final events = <Object?>[];
@@ -398,6 +455,53 @@ void main() {
     });
   });
 
+  group('UseCaseManager flush', () {
+    test(
+        'flush while a UseCase is running completes callFuture once and '
+        'raises no StateError', () async {
+      final uncaught = <Object>[];
+
+      Object? thrown;
+      var completedNormally = false;
+
+      await runZonedGuarded(() async {
+        final manager = UseCaseManager();
+
+        manager.register<DelayedUseCase>(
+          () => DelayedUseCase('slow', const Duration(milliseconds: 200)),
+        );
+
+        // Attach the handlers synchronously. A Completer completed with an
+        // error and no listener yet is reported as unhandled at the end of that
+        // microtask turn, which would show up here as a failure that has
+        // nothing to do with flush().
+        final settled = manager.callFuture<DelayedUseCase>().then<void>(
+          (_) {
+            completedNormally = true;
+          },
+          onError: (Object e) {
+            thrown = e;
+          },
+        );
+
+        // Let it start, then abandon it mid-flight.
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        await manager.flush();
+        await settled;
+
+        // Outlive the UseCase's own 200ms completion, which is when the
+        // pre-fix success arm re-completed the already-completed Completer.
+        await Future.delayed(const Duration(milliseconds: 400));
+      }, (error, stack) => uncaught.add(error));
+
+      expect(completedNormally, isFalse);
+      expect(thrown, isA<UseCaseStatus>());
+      expect((thrown as UseCaseStatus).state, UseCaseState.error);
+      expect(uncaught, isEmpty);
+    });
+  });
+
   group('UseCaseExecutor construction diagnostics', () {
     test('a second construction with a different batchTimeout logs a warning',
         () {
@@ -421,6 +525,43 @@ void main() {
       UseCaseExecutor(batchTimeout: const Duration(milliseconds: 150));
 
       expect(logs.where((l) => l.contains('was IGNORED')), hasLength(1));
+    });
+
+    test('the warning reaches the caller when the live instance has no logger',
+        () {
+      // A first construction with no logger at all, which is exactly what
+      // UseCaseManager does. Logging only on the live instance would send the
+      // warning nowhere.
+      final first = UseCaseExecutor(
+        batchTimeout: const Duration(milliseconds: 150),
+      );
+
+      final logs = <String>[];
+
+      final second = UseCaseExecutor(
+        batchTimeout: const Duration(seconds: 5),
+        logger: (m, _) => logs.add(m),
+      );
+
+      expect(identical(first, second), isTrue);
+      expect(second.batchTimeout, const Duration(milliseconds: 150));
+      expect(logs.where((l) => l.contains('was IGNORED')), hasLength(1));
+    });
+
+    test('omitting batchTimeout is never warned about', () {
+      final logs = <String>[];
+
+      UseCaseExecutor(
+        batchTimeout: const Duration(milliseconds: 150),
+        logger: (m, _) => logs.add(m),
+      );
+
+      // UseCaseManager() constructs UseCaseExecutor(debug: debug) with no
+      // batchTimeout. That is not a configuration attempt and must not be
+      // blamed for the default it never supplied.
+      UseCaseManager();
+
+      expect(logs.where((l) => l.contains('was IGNORED')), isEmpty);
     });
   });
 }

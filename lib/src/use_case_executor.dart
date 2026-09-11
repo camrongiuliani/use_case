@@ -47,6 +47,14 @@ class UseCaseExecutor {
   /// carrying a [UseCaseTimeoutException], and the entry leaves the queue. If
   /// the abandoned UseCase later completes, its result is discarded and no
   /// further notification is sent.
+  ///
+  /// Two known rough edges on this path:
+  ///
+  /// * The timeout status carries no `stackTrace`, so a consumer bridging it to
+  ///   a Future (such as `UseCaseManager.callFuture`) completes the error with a
+  ///   null stack trace.
+  /// * `dispose()` still runs on the abandoned UseCase whenever it eventually
+  ///   finishes, which is after its observers were told the run had ended.
   final Duration batchTimeout;
 
   static UseCaseExecutor? instance;
@@ -69,24 +77,45 @@ class UseCaseExecutor {
   /// passed to them. Configure the executor before anything else constructs it,
   /// or reset [instance] yourself.
   ///
-  /// A later call that passes a [batchTimeout] differing from the live
-  /// instance's logs a warning, so a dropped configuration is visible rather
-  /// than silent. The other parameters are still dropped without a warning.
+  /// A later call that explicitly passes a [batchTimeout] differing from the
+  /// live instance's logs a warning, so a dropped configuration is visible
+  /// rather than silent. Omitting [batchTimeout] is not a configuration attempt
+  /// and is never warned about. The other parameters are still dropped without
+  /// a warning.
+  ///
+  /// The warning is sent to the live instance's logger AND, when it differs, to
+  /// the logger passed to this call — otherwise a caller that configures the
+  /// executor late would never see that its value was dropped, because the
+  /// instance doing the logging is the one it failed to configure.
   factory UseCaseExecutor({
     bool debug = false,
     UCLogger? logger,
-    Duration batchTimeout = const Duration(seconds: 60),
+    Duration? batchTimeout,
   }) {
     final existing = instance;
 
-    if (existing != null && existing.batchTimeout != batchTimeout) {
-      existing.logW(
-        'UseCaseExecutor already exists, so the batchTimeout passed to this '
-        'call ($batchTimeout) was IGNORED; the instance keeps '
-        '${existing.batchTimeout}. Construct the executor with the timeout you '
-        'want before anything else constructs it, or reset '
-        'UseCaseExecutor.instance first.',
-      );
+    // `batchTimeout == null` means "not passed". Without the nullable type the
+    // factory cannot tell that apart from an explicit 60s, and every default
+    // construction after a configured one would be blamed for a value it never
+    // supplied.
+    if (existing != null &&
+        batchTimeout != null &&
+        existing.batchTimeout != batchTimeout) {
+      final message =
+          'UseCaseExecutor already exists, so the batchTimeout passed to this '
+          'call ($batchTimeout) was IGNORED; the instance keeps '
+          '${existing.batchTimeout}. Construct the executor with the timeout '
+          'you want before anything else constructs it, or reset '
+          'UseCaseExecutor.instance first.';
+
+      existing.logW(message);
+
+      // The live instance may have been built without a logger (UseCaseManager
+      // builds it that way), which would send the warning nowhere. Tell the
+      // caller directly too.
+      if (logger != null && !identical(logger, existing.logger)) {
+        logger(message, UCLogLevel.warning);
+      }
     }
 
     return instance ??= UseCaseExecutor._(
@@ -98,7 +127,7 @@ class UseCaseExecutor {
       ),
       debug,
       logger,
-      batchTimeout,
+      batchTimeout ?? const Duration(seconds: 60),
     );
   }
 
@@ -130,6 +159,11 @@ class UseCaseExecutor {
     _queue.clear();
 
     for (var entry in queueCopy) {
+      // Same reasoning as the batch timeout: the execution closures still hold
+      // this entry, so without the flag the success arm would later overwrite
+      // the status and notify `done` after `error`.
+      entry.abandoned = true;
+
       entry.status = entry.status.copyWith(state: UseCaseState.error);
       _notifyObservers(entry.status, entry.observers);
     }
